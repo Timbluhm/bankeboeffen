@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bankebøffen</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0a0a0b;
+    --surface:  #111113;
+    --border:   #1e1e22;
+    --border2:  #2a2a30;
+    --text:     #d4d4dc;
+    --muted:    #52525e;
+    --dim:      #2a2a32;
+
+    /* Intensity palette — cool to hot */
+    --i0:  #1a3a4a;
+    --i25: #1a5a6a;
+    --i50: #c47a1a;
+    --i75: #d4441a;
+    --i100:#ff2222;
+
+    --accent: #e84040;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+
+  /* ─── LAYOUT ─────────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-rows: 48px 1fr;
+    grid-template-columns: 1fr 320px;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* ─── TOPBAR ─────────────────────────────────── */
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: #fff;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .topbar-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-dot.connected { background: #3fba74; box-shadow: 0 0 6px #3fba74; }
+  .status-dot.pulse {
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  .connect-btn {
+    margin-left: 12px;
+    padding: 4px 12px;
+    border: 1px solid var(--border2);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .connect-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .connect-btn.active { border-color: #3fba74; color: #3fba74; }
+
+  /* ─── MAIN PANEL ─────────────────────────────── */
+  .main {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+  }
+
+  /* ─── LIVE INTENSITY ─────────────────────────── */
+  .live-block {
+    flex-shrink: 0;
+  }
+
+  .label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .intensity-display {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .intensity-number {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(64px, 10vw, 96px);
+    line-height: 1;
+    color: #fff;
+    transition: color 0.3s;
+    min-width: 3ch;
+  }
+
+  .intensity-unit {
+    font-size: 18px;
+    color: var(--muted);
+    padding-bottom: 12px;
+  }
+
+  .intensity-label-live {
+    font-size: 11px;
+    color: var(--muted);
+    padding-bottom: 14px;
+    letter-spacing: 0.06em;
+  }
+
+  /* Intensity bar */
+  .bar-track {
+    height: 6px;
+    background: var(--dim);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.15s ease-out, background 0.3s;
+    background: var(--i0);
+  }
+
+  /* ─── TIMELINE GRAPH ─────────────────────────── */
+  .graph-block {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .graph-wrap {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+  }
+
+  canvas#timeline {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Y-axis labels */
+  .y-labels {
+    position: absolute;
+    left: 0; top: 0; bottom: 20px;
+    width: 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+  .y-label {
+    font-size: 9px;
+    color: var(--muted);
+    text-align: right;
+    padding-right: 4px;
+  }
+
+  /* ─── SIDE PANEL ─────────────────────────────── */
+  .side {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .side-section {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  /* Stats grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 22px;
+    color: #fff;
+    line-height: 1.1;
+  }
+
+  .stat-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* Heatmap — hours of day */
+  .heatmap {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 2px;
+    margin-top: 10px;
+  }
+
+  .heatmap-cell {
+    aspect-ratio: 1;
+    border-radius: 2px;
+    background: var(--dim);
+    position: relative;
+    cursor: default;
+    transition: transform 0.1s;
+  }
+
+  .heatmap-cell:hover { transform: scale(1.3); z-index: 10; }
+
+  .heatmap-hours {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 2px;
+    margin-top: 3px;
+  }
+
+  .heatmap-hour-label {
+    font-size: 7px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  /* Hit log */
+  .hit-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .hit-log::-webkit-scrollbar { width: 3px; }
+  .hit-log::-webkit-scrollbar-track { background: transparent; }
+  .hit-log::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .hit-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    animation: slideIn 0.2s ease-out;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .hit-time {
+    font-size: 10px;
+    color: var(--muted);
+    width: 56px;
+    flex-shrink: 0;
+  }
+
+  .hit-bar {
+    flex: 1;
+    height: 3px;
+    background: var(--dim);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .hit-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+  }
+
+  .hit-pct {
+    font-size: 11px;
+    color: var(--text);
+    width: 36px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .empty-log {
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+    margin-top: 24px;
+    line-height: 1.8;
+  }
+
+  /* Demo button */
+  .demo-btn {
+    margin: 0 18px 14px;
+    padding: 8px;
+    border: 1px dashed var(--border2);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+  }
+  .demo-btn:hover { color: var(--text); border-color: var(--border2); border-style: solid; }
+
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="logo">Banke<span>Bøffen</span></div>
+    <div class="topbar-status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Ikke forbundet</span>
+      <button class="connect-btn" id="connectBtn" onclick="toggleConnect()">Forbind</button>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <div class="live-block">
+      <div class="label">Live intensitet</div>
+      <div class="intensity-display">
+        <div class="intensity-number" id="intensityNum">—</div>
+        <div class="intensity-unit">%</div>
+        <div class="intensity-label-live" id="lastHitLabel"></div>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" id="barFill"></div>
+      </div>
+    </div>
+
+    <div class="graph-block">
+      <div class="label">Session — intensitet over tid</div>
+      <div class="graph-wrap">
+        <canvas id="timeline"></canvas>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- SIDE PANEL -->
+  <aside class="side">
+
+    <!-- Stats -->
+    <div class="side-section">
+      <div class="label">Session</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="statCount">0</div>
+          <div class="stat-label">Slag</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statAvg">—</div>
+          <div class="stat-label">Gns. %</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statPeak">—</div>
+          <div class="stat-label">Højeste %</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statDuration">0:00</div>
+          <div class="stat-label">Varighed</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Heatmap -->
+    <div class="side-section">
+      <div class="label">I dag — time for time</div>
+      <div class="heatmap" id="heatmap"></div>
+      <div class="heatmap-hours" id="heatmapHours"></div>
+    </div>
+
+    <!-- Hit log -->
+    <div class="label" style="padding: 12px 18px 0; flex-shrink:0;">Log</div>
+    <div class="hit-log" id="hitLog">
+      <div class="empty-log">Ingen slag endnu.<br>Forbind enheden eller brug demo.</div>
+    </div>
+
+    <button class="demo-btn" onclick="simulateHit()">⚡ Simulér slag</button>
+
+  </aside>
+
+</div>
+
+<script>
+// ─── STATE ──────────────────────────────────────
+const state = {
+  connected: false,
+  port: null,
+  reader: null,
+  hits: [],           // { time, intensity, ts }
+  sessionStart: null,
+  heatmapData: new Array(24).fill(0), // avg intensity per hour
+  heatmapCount: new Array(24).fill(0),
+  durationTimer: null,
+};
+
+// ─── INTENSITY COLOR ────────────────────────────
+function intensityColor(pct) {
+  if (pct < 25)  return `hsl(195, 60%, ${20 + pct * 0.6}%)`;
+  if (pct < 50)  return `hsl(${195 - (pct-25)*4}, 65%, 35%)`;
+  if (pct < 75)  return `hsl(${95 - (pct-50)*3}, 80%, 40%)`;
+  return `hsl(${20 - (pct-75)*0.6}, 90%, ${45 + (pct-75)*0.3}%)`;
+}
+
+// ─── LIVE DISPLAY ───────────────────────────────
+function showIntensity(pct) {
+  const num = document.getElementById('intensityNum');
+  const bar = document.getElementById('barFill');
+  const label = document.getElementById('lastHitLabel');
+
+  num.textContent = Math.round(pct);
+  num.style.color = intensityColor(pct);
+  bar.style.width = pct + '%';
+  bar.style.background = intensityColor(pct);
+
+  const now = new Date();
+  label.textContent = now.toLocaleTimeString('da-DK');
+
+  // Fade out after 4s
+  clearTimeout(state._fadeTimer);
+  state._fadeTimer = setTimeout(() => {
+    num.style.color = '#fff';
+    bar.style.width = '0%';
+    num.textContent = '—';
+    label.textContent = '';
+  }, 4000);
+}
+
+// ─── RECORD HIT ─────────────────────────────────
+function recordHit(pct) {
+  const now = new Date();
+
+  if (!state.sessionStart) {
+    state.sessionStart = now;
+    startDurationTimer();
+  }
+
+  state.hits.push({ time: now, intensity: pct });
+
+  // Heatmap
+  const hour = now.getHours();
+  state.heatmapCount[hour]++;
+  state.heatmapData[hour] = (
+    (state.heatmapData[hour] * (state.heatmapCount[hour] - 1) + pct) /
+    state.heatmapCount[hour]
+  );
+
+  showIntensity(pct);
+  updateStats();
+  updateHeatmap();
+  addLogRow(now, pct);
+  drawTimeline();
+}
+
+// ─── STATS ──────────────────────────────────────
+function updateStats() {
+  const hits = state.hits;
+  if (!hits.length) return;
+
+  const avg = hits.reduce((s, h) => s + h.intensity, 0) / hits.length;
+  const peak = Math.max(...hits.map(h => h.intensity));
+
+  document.getElementById('statCount').textContent = hits.length;
+  document.getElementById('statAvg').textContent = avg.toFixed(0);
+  document.getElementById('statPeak').textContent = peak.toFixed(0);
+}
+
+function startDurationTimer() {
+  state.durationTimer = setInterval(() => {
+    if (!state.sessionStart) return;
+    const elapsed = Math.floor((Date.now() - state.sessionStart) / 1000);
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    document.getElementById('statDuration').textContent =
+      `${m}:${s.toString().padStart(2,'0')}`;
+  }, 1000);
+}
+
+// ─── HEATMAP ────────────────────────────────────
+function buildHeatmap() {
+  const hm = document.getElementById('heatmap');
+  const hl = document.getElementById('heatmapHours');
+  hm.innerHTML = '';
+  hl.innerHTML = '';
+
+  for (let h = 0; h < 24; h++) {
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    cell.id = `hm-${h}`;
+    cell.title = `${h}:00`;
+    hm.appendChild(cell);
+
+    const lbl = document.createElement('div');
+    lbl.className = 'heatmap-hour-label';
+    lbl.textContent = h % 6 === 0 ? h : '';
+    hl.appendChild(lbl);
+  }
+}
+
+function updateHeatmap() {
+  for (let h = 0; h < 24; h++) {
+    const cell = document.getElementById(`hm-${h}`);
+    if (!cell) continue;
+    const v = state.heatmapData[h];
+    if (v === 0) {
+      cell.style.background = 'var(--dim)';
+    } else {
+      cell.style.background = intensityColor(v);
+      cell.style.opacity = 0.4 + (v / 100) * 0.6;
+    }
+  }
+}
+
+// ─── LOG ────────────────────────────────────────
+function addLogRow(time, pct) {
+  const log = document.getElementById('hitLog');
+
+  // Remove empty state
+  const empty = log.querySelector('.empty-log');
+  if (empty) empty.remove();
+
+  const row = document.createElement('div');
+  row.className = 'hit-row';
+
+  const color = intensityColor(pct);
+  row.innerHTML = `
+    <div class="hit-time">${time.toLocaleTimeString('da-DK', {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</div>
+    <div class="hit-bar"><div class="hit-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+    <div class="hit-pct">${Math.round(pct)}%</div>
+  `;
+
+  log.insertBefore(row, log.firstChild);
+
+  // Keep max 200 rows
+  while (log.children.length > 200) log.removeChild(log.lastChild);
+}
+
+// ─── TIMELINE CANVAS ────────────────────────────
+function drawTimeline() {
+  const canvas = document.getElementById('timeline');
+  const wrap = canvas.parentElement;
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const PAD_L = 36, PAD_B = 20, PAD_T = 8, PAD_R = 8;
+  const gW = W - PAD_L - PAD_R;
+  const gH = H - PAD_T - PAD_B;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#1e1e22';
+  ctx.lineWidth = 1;
+  [0, 25, 50, 75, 100].forEach(v => {
+    const y = PAD_T + gH - (v / 100) * gH;
+    ctx.beginPath();
+    ctx.moveTo(PAD_L, y);
+    ctx.lineTo(W - PAD_R, y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#52525e';
+    ctx.font = '9px DM Mono';
+    ctx.textAlign = 'right';
+    ctx.fillText(v, PAD_L - 4, y + 3);
+  });
+
+  const hits = state.hits;
+  if (hits.length < 2) return;
+
+  const t0 = hits[0].time.getTime();
+  const t1 = hits[hits.length - 1].time.getTime();
+  const tRange = Math.max(t1 - t0, 1000);
+
+  // Draw stems
+  hits.forEach(h => {
+    const x = PAD_L + ((h.time.getTime() - t0) / tRange) * gW;
+    const y = PAD_T + gH - (h.intensity / 100) * gH;
+    const color = intensityColor(h.intensity);
+
+    // Stem
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, PAD_T + gH);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    // Dot
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.globalAlpha = 1;
+}
+
+// ─── SERIAL CONNECTION ──────────────────────────
+async function toggleConnect() {
+  if (state.connected) {
+    disconnect();
+  } else {
+    connect();
+  }
+}
+
+async function connect() {
+  if (!('serial' in navigator)) {
+    alert('Web Serial API er ikke tilgængelig.\nBrug Chrome eller Edge og aktiver "Eksperimentelle webplatformsfunktioner".');
+    return;
+  }
+
+  try {
+    state.port = await navigator.serial.requestPort();
+    await state.port.open({ baudRate: 9600 });
+
+    state.connected = true;
+    updateConnectionUI(true);
+    readLoop();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function disconnect() {
+  state.connected = false;
+  try {
+    if (state.reader) { await state.reader.cancel(); state.reader = null; }
+    if (state.port) { await state.port.close(); state.port = null; }
+  } catch(e) {}
+  updateConnectionUI(false);
+}
+
+async function readLoop() {
+  const decoder = new TextDecoderStream();
+  state.port.readable.pipeTo(decoder.writable);
+  const reader = decoder.readable.getReader();
+  state.reader = reader;
+
+  let buffer = '';
+  while (state.connected) {
+    try {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop();
+      lines.forEach(parseLine);
+    } catch(e) { break; }
+  }
+}
+
+function parseLine(line) {
+  const match = line.match(/Score:\s*(\d+(\.\d+)?)/);
+  if (match) {
+    const pct = parseFloat(match[1]);
+    if (!isNaN(pct) && pct >= 0 && pct <= 100) {
+      recordHit(pct);
+    }
+  }
+}
+
+function updateConnectionUI(connected) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  const btn = document.getElementById('connectBtn');
+
+  if (connected) {
+    dot.className = 'status-dot connected pulse';
+    txt.textContent = 'Forbundet';
+    btn.textContent = 'Afbryd';
+    btn.className = 'connect-btn active';
+  } else {
+    dot.className = 'status-dot';
+    txt.textContent = 'Ikke forbundet';
+    btn.textContent = 'Forbind';
+    btn.className = 'connect-btn';
+  }
+}
+
+// ─── DEMO ───────────────────────────────────────
+function simulateHit() {
+  // Weighted random — most hits in 20-70% range
+  const r = Math.random();
+  let pct;
+  if (r < 0.1) pct = Math.random() * 20;
+  else if (r < 0.7) pct = 20 + Math.random() * 50;
+  else if (r < 0.95) pct = 70 + Math.random() * 25;
+  else pct = 95 + Math.random() * 5;
+
+  recordHit(Math.round(pct * 10) / 10);
+}
+
+// ─── RESIZE ─────────────────────────────────────
+window.addEventListener('resize', () => {
+  if (state.hits.length) drawTimeline();
+});
+
+// ─── INIT ───────────────────────────────────────
+buildHeatmap();
+updateHeatmap();
+</script>
+</body>
+</html>
