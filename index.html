@@ -735,11 +735,15 @@ async function readLoop() {
 }
 
 function parseLine(line) {
-  const match = line.match(/Score:\s*(\d+(\.\d+)?)/);
-  if (match) {
-    const pct = parseFloat(match[1]);
+  const scoreMatch = line.match(/Score:\s*(\d+(\.\d+)?)/);
+  const eMatch = line.match(/E:\s*(\d+(\.\d+)?)/);
+
+  if (scoreMatch) {
+    const pct = parseFloat(scoreMatch[1]);
+    const e = eMatch ? parseFloat(eMatch[1]) : null;
+
     if (!isNaN(pct) && pct >= 0 && pct <= 100) {
-      recordHit(pct);
+      recordHit(pct, e);
     }
   }
 }
